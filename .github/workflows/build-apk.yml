@@ -1,7 +1,7 @@
 # Builds the Android app (APK) in the cloud, so you don't need to install Android Studio.
 # How: put this project on GitHub, then Actions -> "Build Android APK" -> Run workflow.
 # When it finishes, download "BottleDesk-apk" from the bottom of that run's page.
-# To pre-set your server address: Settings -> Secrets and variables -> Actions -> Variables -> API_URL.
+# Configure VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY under Settings -> Secrets and variables -> Actions -> Variables.
 name: Build Android APK
 
 on:
@@ -33,7 +33,8 @@ jobs:
       - name: Build the web app
         run: npm run build
         env:
-          VITE_API_URL: ${{ vars.API_URL }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
       - name: Add Android project
         run: npx cap add android

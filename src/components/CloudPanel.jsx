@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Cloud, CloudOff, RefreshCw } from 'lucide-react'
 import { useApp } from '../context.jsx'
 import { Field, FormError } from './ui.jsx'
-import { BUILD_SERVER, ApiError, isNativeApp, lastServer, normalizeServerUrl, request } from '../lib/api.js'
+import { isSupabaseConfigured } from '../lib/supabase.js'
 
 const STATUS_TEXT = {
   local: 'Not backed up',
@@ -23,41 +23,27 @@ export const timeAgo = (iso) => {
 
 export default function CloudPanel() {
   const { sync, notify } = useApp()
-  const native = isNativeApp()
   const [mode, setMode] = useState('login')
-  const [v, setV] = useState({ server: BUILD_SERVER || lastServer(), username: '', password: '', confirm: '' })
+  const [v, setV] = useState({ email: '', password: '', confirm: '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [test, setTest] = useState('')
   const [pw, setPw] = useState({ open: false, old: '', next: '', error: '', busy: false })
   const set = (p) => setV((o) => ({ ...o, ...p }))
 
   const submit = async (e) => {
     e.preventDefault()
     setError('')
-    if (v.username.trim().length < 3) return setError('Enter your username (3 or more characters). A phone number or email works well.')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email.trim())) return setError('Enter a valid email address.')
     if (v.password.length < 6) return setError('Password must be at least 6 characters.')
     if (mode === 'register' && v.password !== v.confirm) return setError('The two passwords are not the same.')
     setBusy(true)
     try {
-      await sync.signIn({ mode, server: v.server, username: v.username.trim(), password: v.password })
+      await sync.signIn({ mode, username: v.email.trim(), password: v.password })
       notify(mode === 'register' ? 'Account created. Your records will now back up automatically.' : 'Signed in.')
     } catch (err) {
       setError(err.message)
     } finally {
       setBusy(false)
-    }
-  }
-
-  const testConnection = async () => {
-    setTest('Checking…')
-    try {
-      const base = normalizeServerUrl(v.server)
-      if (!base && native) throw new ApiError('Enter your server address first.')
-      const res = await request(base, 'GET', '/api/health', { timeout: 8000 })
-      setTest(res.ok ? `Connected. ${res.registration ? '' : 'New accounts are switched off on this server.'}` : 'The server answered, but it is not BottleDesk.')
-    } catch (err) {
-      setTest(err.message)
     }
   }
 
@@ -82,7 +68,7 @@ export default function CloudPanel() {
           <span className={`sync-chip ${sync.status}`}>{sync.status === 'offline' ? <CloudOff size={14} /> : <Cloud size={14} />} {STATUS_TEXT[sync.status]}</span>
         </div>
         <p className="muted pad">
-          Your records are saved on this phone and copied to your server{sync.auth.server ? ` (${sync.auth.server.replace(/^https?:\/\//, '')})` : ''} whenever you have signal.
+          Your records are saved on this phone and copied to your Supabase cloud backup whenever you have signal.
           Last backup: <b>{timeAgo(sync.lastSync)}</b>. Sign in on another phone to see the same records.
         </p>
         {sync.message ? <div className="form-error">{sync.message}</div> : null}
@@ -111,18 +97,16 @@ export default function CloudPanel() {
         <div><p className="eyebrow">Cloud backup</p><h4>Sign in to back up and share between phones</h4></div>
         <span className="sync-chip local"><CloudOff size={14} /> Not backed up</span>
       </div>
-      <p className="muted pad">The app works fine without an account. Right now your records live only on this phone. Create a free account on your server and they are copied to it automatically, even if you lose or change your phone.</p>
+      <p className="muted pad">The app works fine without an account. Right now your records live only on this phone. Create an account and they are copied to your Supabase cloud backup automatically, even if you lose or change your phone.</p>
+      {!isSupabaseConfigured ? <p className="form-error">Cloud backup is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in the build environment.</p> : null}
       <div className="tabs" role="tablist">
         <button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'on' : ''} onClick={() => setMode('login')}>Sign in</button>
         <button type="button" role="tab" aria-selected={mode === 'register'} className={mode === 'register' ? 'on' : ''} onClick={() => setMode('register')}>Create account</button>
       </div>
       <form className="form" onSubmit={submit}>
-        <Field label="Server address" hint={native ? 'Required. The web address of your BottleDesk server, e.g. https://bottles.example.com' : "Leave empty to use the server you opened this page from."}>
-          <input value={v.server} onChange={(e) => set({ server: e.target.value })} placeholder={native ? 'https://your-server.com' : '(this website)'} autoCapitalize="none" autoCorrect="off" inputMode="url" />
-        </Field>
         <div className="form-grid">
-          <Field label="Username" hint="Phone number or email">
-            <input value={v.username} onChange={(e) => set({ username: e.target.value })} autoComplete="username" autoCapitalize="none" />
+          <Field label="Email">
+            <input type="email" value={v.email} onChange={(e) => set({ email: e.target.value })} autoComplete="email" autoCapitalize="none" />
           </Field>
           <Field label="Password" hint="At least 6 characters">
             <input type="password" value={v.password} onChange={(e) => set({ password: e.target.value })} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} />
@@ -132,10 +116,8 @@ export default function CloudPanel() {
           <Field label="Repeat password"><input type="password" value={v.confirm} onChange={(e) => set({ confirm: e.target.value })} autoComplete="new-password" /></Field>
         ) : null}
         <FormError>{error}</FormError>
-        {test ? <p className="muted">{test}</p> : null}
         <div className="form-actions left">
-          <button className="primary-button" disabled={busy}>{busy ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in'}</button>
-          <button type="button" className="ghost-button" onClick={testConnection}>Test connection</button>
+          <button className="primary-button" disabled={busy || !isSupabaseConfigured}>{busy ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in'}</button>
         </div>
       </form>
     </section>

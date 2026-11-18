@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { loadEnv } from 'vite'
 
 const win = process.platform === 'win32'
 const run = (cmd, args, opts = {}) => {
@@ -27,7 +28,10 @@ if (!sdk || !fs.existsSync(sdk)) {
   process.exit(1)
 }
 
-if (!fs.existsSync('.env')) console.log('Note: no .env file found, so the app will ask people to type the server address. See .env.example.')
+const buildEnv = { ...loadEnv('production', process.cwd(), ''), ...process.env }
+if (!buildEnv.VITE_SUPABASE_URL || !buildEnv.VITE_SUPABASE_PUBLISHABLE_KEY) {
+  console.log('Note: VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY are not set; the APK will build without cloud backup. See .env.example.')
+}
 
 run('npx', ['vite', 'build'])
 if (!fs.existsSync('android')) {
